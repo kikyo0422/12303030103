@@ -3,6 +3,7 @@
 姓名：丁尚武
 班级：123030301
 学号：12303030103
+GitHub：https://github.com/kikyo0422/12303030103
 
 一、个人参数
 SID = 12303030103
@@ -46,6 +47,7 @@ task4/  Redis Pipeline 与性能比较（选做）
         task4.py      逐条写入、普通 Pipeline 分批写入、计时与完整性核验
         result.txt    实际运行结果
         说明.txt      实现说明与结果解释
+shots/  运行结果截图（报告插图）
 
 四、执行方法
 task1：
