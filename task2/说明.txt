@@ -1,0 +1,47 @@
+第二题 MongoDB 原子扣减与事务验证
+
+1. 原子扣减
+把教材编号和库存条件同时写进 update_one 的过滤条件，再用 $inc 原子扣减：
+  result = inventory.update_one(
+      {"_id": BOOK_ID, "stock": {"$gte": quantity}},
+      {"$inc": {"stock": -quantity}},
+      session=session
+  )
+只有当 _id 匹配且 stock >= quantity 时才匹配成功；库存不足时 matchedCount = 0，
+不会执行扣减。条件检查和扣减由 MongoDB 对单个文档原子完成，不存在“先查询、
+再无条件扣减”的时间窗口。
+
+2. 判断操作结果
+(1) matched_count == 1 且事务 commit 成功：扣减成功；
+(2) matched_count == 0：库存不足或教材不存在；
+(3) 抛出 PyMongoError 或其他异常：数据库执行异常，事务回滚。
+程序以数据库返回的结果作为判断依据，不以“执行到某一行”作为扣减成功的依据。
+
+3. 事务实现
+订购函数 place_order(request_id, force_error) 每次创建一个会话，在同一会话中
+start_transaction()；库存扣减和订单插入都传入 session。
+- 扣减 matched_count != 1 时 abort_transaction() 并返回失败，不插入订单；
+- force_error=True 时，在扣减成功后、订单插入前抛出 RuntimeError；
+- 正常路径 commit_transaction() 成功后才返回 success=True；
+- except 中若 session.in_transaction 则 abort_transaction()；
+- finally 中 end_session()。
+
+4. 系统测试（本人参数 Stock = 8，Buy = 1，T4 订购 floor(8/1)+1 = 9 次）
+场景          初始库存  购买数量  成功次数  失败次数  最终库存  最终订单数量  核验
+T1 正常订购      8         1         1         0         7         1        PASS
+T2 库存不足      0         1         0         1         0         0        PASS
+T3 中途异常      8         1         0         1         8         0        PASS
+T4 连续购买      8         1         8         1         0         8        PASS
+全部场景核验：PASS。
+每个场景开始前分别重置 inventory 和 orders；程序根据参数计算预期值并与实际
+结果比较。
+
+5. 结果解释
+(1) 单次扣减的原子性只保证 inventory 一个文档内部的“条件检查 + 扣减”不可分割；
+订单是 orders 集合中的另一个文档，扣减和插单是两次独立的写操作。没有事务时，
+扣减成功后、插入订单前崩溃会出现“库存已扣但没有订单”；先插订单再扣库存则可能
+出现“有订单但没有扣库存”。事务把两个文档的写操作放进同一会话，保证全部成功
+或全部回滚。
+(2) forceError 在库存扣减已经成功、订单尚未插入时主动抛出异常。T3 最终库存仍为
+8、订单数为 0，说明事务把已经执行的扣减回滚了；这验证了异常路径确实执行回滚、
+扣减失败时不会生成订单，也验证了只有 commit 成功后才会返回订购成功。
