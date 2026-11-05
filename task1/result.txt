@@ -1,0 +1,17 @@
+=== 1. 查询张老师讲授且状态为 OPEN 的课程 ===
+课程编号=COURSE-12303030103-01 | 课程名称=NoSQL数据库 | 章节数量=2
+=== 2. 将 01 号课程 CH02 章节标题改为 Redis基础与应用-3 ===
+更新结果：matchedCount=1, modifiedCount=1
+更新后的课程文档：
+  _id=COURSE-12303030103-01 | title=NoSQL数据库 | teacher=张老师 | status=OPEN
+  CH01 | MongoDB基础 | hours=2
+  CH02 | Redis基础与应用-3 | hours=2
+=== 3. 连续两次新增 CH03 章节（防止重复）===
+第1次新增：matchedCount=1, modifiedCount=1
+第2次新增：matchedCount=0, modifiedCount=0
+=== 4. 验证与解释 ===
+(1) 修改后 CH02 的标题：Redis基础与应用-3
+(2) 两次新增后 CH03 的数量：1
+(3) 最终章节总数：3
+(4) teacher=张老师，status=OPEN
+核验结果：PASS

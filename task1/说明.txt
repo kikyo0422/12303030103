@@ -1,0 +1,45 @@
+第一题 MongoDB 课程信息查询与维护
+
+1. 查询课程
+使用聚合管道：
+  $match 同时筛选 teacher = "张老师" 和 status = "OPEN"；
+  $project 中用 $size 对 chapters 数组求长度，章节数量由数据库实时计算，没有写死。
+运行结果：只有 COURSE-12303030103-01（NoSQL数据库）满足条件，章节数量为 2。
+说明：02 号课程也是张老师授课，但 status 为 CLOSED；03 号课程 status 为 OPEN，
+但 teacher 为李老师，因此都不满足条件。
+
+2. 修改章节标题
+使用 arrayFilters 对 chapters 数组中 chapterId = "CH02" 的元素做局部更新：
+  db.courses.updateOne(
+    { _id: "COURSE-12303030103-01", "chapters.chapterId": "CH02" },
+    { $set: { "chapters.$[ch].title": "Redis基础与应用-3" } },
+    { arrayFilters: [{ "ch.chapterId": "CH02" }] }
+  )
+运行结果：matchedCount = 1，modifiedCount = 1。
+更新后 CH02 标题为 Redis基础与应用-3；CH01、teacher、status 等其他字段和章节均保留。
+
+3. 增加章节并防止重复
+把“不存在 CH03”作为更新条件的一部分，与 $push 放在同一条 updateOne 中：
+  db.courses.updateOne(
+    { _id: "COURSE-12303030103-01",
+      chapters: { $not: { $elemMatch: { chapterId: "CH03" } } } },
+    { $push: { chapters: { chapterId: "CH03",
+                           title: "Redis高级操作", hours: 2 + 0 } } }
+  )
+第 1 次执行 matchedCount = 1、modifiedCount = 1；
+第 2 次执行 matchedCount = 0、modifiedCount = 0，CH03 只出现一次。
+没有先删除再插入，也没有把整个课程读回客户端重新拼接。
+
+4. 验证结果
+(1) 修改后 CH02 的标题：Redis基础与应用-3；
+(2) 两次新增后 CH03 的数量：1；
+(3) 最终章节总数：3；
+(4) teacher = 张老师，status = OPEN，均保持原值。
+核验结果：PASS。
+
+5. 为什么适合局部更新
+局部更新只把被修改数组元素的路径和新值发送给 MongoDB，由数据库在服务端原子地
+修改该元素，其他字段和其他章节不受影响；不需要先把整个文档读到客户端再写回，
+避免了“读—改—写”期间其他并发修改被覆盖的丢失更新问题，也减少了网络传输。
+直接替换整个课程文档必须先读取、在客户端拼接、再整体覆盖；如果其他会话在此
+期间修改了 teacher、status 或其他章节，整体覆盖会把这些修改一并冲掉，风险更大。
