@@ -1,0 +1,58 @@
+第三题 Redis 学习信息与排行榜
+
+所有键使用前缀 exam:12303030103:。
+本人参数：SID=12303030103，S=3，C=3，本人成绩 = 70 + C = 73。
+
+1. 学生信息维护（Hash）
+  HSET exam:12303030103:student studentId 12303030103 name 张三 \
+       className 123030301 courseId COURSE-12303030103-01 status learning
+  HSET exam:12303030103:student status completed
+  HGET exam:12303030103:student name
+  HGET exam:12303030103:student status
+  HGETALL exam:12303030103:student
+结果：HSET 新建字段数=5；name=张三；status=completed；HGETALL 中 studentId、
+name、className、courseId、status 五个字段都在，修改 status 不影响其他字段。
+
+2. 已完成章节记录（Set）
+  SADD exam:12303030103:completed CH01   # SCARD -> 1
+  SADD exam:12303030103:completed CH02   # SCARD -> 2
+  SADD exam:12303030103:completed CH02   # 返回 0，SCARD 仍为 2
+  SADD exam:12303030103:completed CH03   # SCARD -> 3
+  SMEMBERS exam:12303030103:completed
+  SISMEMBER exam:12303030103:completed CH02
+  SISMEMBER exam:12303030103:completed CH04
+结果：每次提交后数量为 1、2、2、3；最终章节为 CH01、CH02、CH03；
+CH02 返回 True，CH04 返回 False；重复提交 CH02 时 SADD 返回 0，数量 3 -> 3。
+
+3. 成绩排行榜（Sorted Set）
+  ZADD exam:12303030103:rank 73 Student:12303030103 85 demo:01 \
+       90 demo:02 60 demo:03 80 demo:04
+  ZREVRANGE exam:12303030103:rank 0 2 WITHSCORES
+  ZINCRBY exam:12303030103:rank 20 Student:12303030103
+  ZREVRANGE exam:12303030103:rank 0 2 WITHSCORES
+  ZSCORE exam:12303030103:rank Student:12303030103
+  ZREVRANK exam:12303030103:rank Student:12303030103
+结果：加分前前 3 名 demo:02=90、demo:01=85、demo:04=80；
+本人加分后 93 分，前 3 名 Student:12303030103=93、demo:02=90、demo:01=85；
+ZREVRANK 返回 0，所以名次为第 1 名（名次 = 返回值 + 1）。
+
+4. 会话生命周期（String + 过期）
+  SET exam:12303030103:session sess-12303030103-20261105 EX 5
+  TTL exam:12303030103:session        # 5
+  # 等待 6 秒以上
+  EXISTS exam:12303030103:session     # 0
+  TTL exam:12303030103:session        # -2
+结果：创建后 TTL=5、TYPE=string；6 秒后 EXISTS=0、TTL=-2，键已自动过期，
+过期验证通过。
+
+5. 数据类型核验与说明
+exam:12303030103:student    -> hash
+exam:12303030103:completed  -> set
+exam:12303030103:rank       -> zset
+exam:12303030103:session    -> string
+
+选择理由：
+Hash：学生信息是多组字段—值，按字段读写、只更新部分字段，比多个 String 键更紧凑。
+Set：已完成章节需要自动去重和成员判断，SADD/SISMEMBER 正好满足。
+Sorted Set：排行榜需要按分数排序、取前 N 名和查询名次，ZREVRANGE/ZREVRANK 高效。
+String：会话是一个整体值并依赖过期时间，SET EX 最简单，TTL 到期自动删除。
